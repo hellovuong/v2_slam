@@ -6,7 +6,7 @@
 
 #include "EdgeSE2XYZ.h"
 #include <cmath>
-#include <g2o/types/slam3d/isometry3d_mappings.h>
+#include "Thirdparty/g2o/g2o/types/isometry3d_mappings.h"
 
 namespace g2o
 {
