@@ -26,6 +26,8 @@
 #include<Eigen/Dense>
 #include"Thirdparty/g2o/g2o/types/types_six_dof_expmap.h"
 #include"Thirdparty/g2o/g2o/types/types_seven_dof_expmap.h"
+#include"Thirdparty/g2o/g2o/types/vertex_se2.h"
+#include"Thirdparty/g2o/g2o/types/se2.h"
 
 namespace ORB_SLAM2
 {
@@ -34,6 +36,11 @@ class Converter
 {
 public:
     static std::vector<cv::Mat> toDescriptorVector(const cv::Mat &Descriptors);
+
+    static inline double normalize_angle(double theta);
+
+    static g2o::SE2 toSE2(const cv::Mat &cvT);
+    static cv::Mat toCvSE3(const Eigen::Vector3d &SE2);
 
     static g2o::SE3Quat toSE3Quat(const cv::Mat &cvT);
     static g2o::SE3Quat toSE3Quat(const g2o::Sim3 &gSim3);

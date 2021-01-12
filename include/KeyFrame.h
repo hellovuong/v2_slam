@@ -153,7 +153,7 @@ public:
     cv::Mat mTcwBefGBA;
     long unsigned int mnBAGlobalForKF;
 
-    // Calibration parameters
+    // Calibration parameters - bf: stereo baseline times fx
     const float fx, fy, cx, cy, invfx, invfy, mbf, mb, mThDepth;
 
     // Number of KeyPoints
