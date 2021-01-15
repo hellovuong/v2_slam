@@ -18,6 +18,9 @@
 * along with ORB-SLAM2. If not, see <http://www.gnu.org/licenses/>.
 */
 
+// Modified by Vuong 2021
+// Add function to normalize_angle; toSE2; toCvSE3
+
 #ifndef CONVERTER_H
 #define CONVERTER_H
 
@@ -37,11 +40,37 @@ class Converter
 public:
     static std::vector<cv::Mat> toDescriptorVector(const cv::Mat &Descriptors);
 
-    static inline double normalize_angle(double theta);
+    static inline double normalize_angle(double theta)
+    {
+        if (theta >= -M_PI && theta < M_PI)
+        return theta;
+
+        double multiplier = floor(theta / (2*M_PI));
+        theta = theta - multiplier*2*M_PI;
+        if (theta >= M_PI)
+        theta -= 2*M_PI;
+        if (theta < -M_PI)
+        theta += 2*M_PI;
+
+        return theta;
+    }
 
     static g2o::SE2 toSE2(const cv::Mat &cvT);
-    static cv::Mat toCvSE3(const Eigen::Vector3d &SE2);
+    static cv::Mat toCvSE3(const Eigen::Vector3d &SE2)
+    {
+        double x = SE2[0];
+        double y = SE2[1];
+        double theta = SE2[2];
 
+        double c = std::cos(theta);
+        double s = std::sin(theta);
+        
+        return (cv::Mat_<float>(4,4) <<
+                c,-s, 0, x,
+                s, c, 0, y,
+                0, 0, 1, 0,
+                0, 0, 0, 1);
+    }
     static g2o::SE3Quat toSE3Quat(const cv::Mat &cvT);
     static g2o::SE3Quat toSE3Quat(const g2o::Sim3 &gSim3);
 

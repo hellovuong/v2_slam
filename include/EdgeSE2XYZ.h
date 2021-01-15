@@ -67,13 +67,14 @@ private:
 
     g2o::CameraParameters * cam;
 };
+
 class EdgeSE2XYZOnlyPose : public g2o::BaseUnaryEdge<2, Vector2d, g2o::VertexSE2>
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
     EdgeSE2XYZOnlyPose();
     ~EdgeSE2XYZOnlyPose();
-
+    
     virtual bool read(std::istream &is);
     virtual bool write(std::ostream &os) const;
 

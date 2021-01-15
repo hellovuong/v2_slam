@@ -13,6 +13,23 @@ namespace g2o
 using namespace std;
 using namespace Eigen;
 
+Vector2d project2d(const Vector3d& v)
+{
+    Vector2d res;
+    res(0) = v(0)/v(2);
+    res(1) = v(1)/v(2);
+    return res;
+}
+
+Vector3d unproject2d(const Vector2d& v)
+{
+    Vector3d res;
+    res(0) = v(0);
+    res(1) = v(1);
+    res(2) = 1;
+    return res;
+}
+
 Eigen::Matrix3d d_inv_d_se2(const SE2& _se2)
 {
     double c = std::cos(_se2.rotation().angle());
@@ -112,6 +129,31 @@ void EdgeSE2XYZ::linearizeOplus()
 }
 
 // Only Pose
+EdgeSE2XYZOnlyPose::EdgeSE2XYZOnlyPose()
+{
+}
+
+EdgeSE2XYZOnlyPose::~EdgeSE2XYZOnlyPose()
+{
+}
+
+bool EdgeSE2XYZOnlyPose::read(std::istream &is)
+{
+    return true;
+}
+
+bool EdgeSE2XYZOnlyPose::write(std::ostream &os) const
+{
+    return true;
+}
+
+Vector2d EdgeSE2XYZOnlyPose::cam_project(const Vector3d & trans_xyz) const{
+    Vector2d proj = project2d(trans_xyz);
+    Vector2d res;
+    res[0] = proj[0] * fx + cx;
+    res[1] = proj[1] * fy + cy;
+    return res;
+}
 
 void EdgeSE2XYZOnlyPose::computeError(){
     const VertexSE2* v1 = static_cast<const VertexSE2*>(_vertices[0]);

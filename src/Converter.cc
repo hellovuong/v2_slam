@@ -18,11 +18,9 @@
 * along with ORB-SLAM2. If not, see <http://www.gnu.org/licenses/>.
 */
 
-// Modified by Vuong (2021) 
-// Add Converter T matrix to SE2 vector
-// Add Converter SE2 vector to T matrix
 
 #include "Converter.h"
+#include <cmath>
 
 namespace ORB_SLAM2
 {
@@ -48,20 +46,7 @@ g2o::SE3Quat Converter::toSE3Quat(const cv::Mat &cvT)
 
     return g2o::SE3Quat(R,t);
 }
-inline double normalize_angle(double theta)
-{
-    if (theta >= -M_PI && theta < M_PI)
-    return theta;
 
-    double multiplier = floor(theta / (2*M_PI));
-    theta = theta - multiplier*2*M_PI;
-    if (theta >= M_PI)
-    theta -= 2*M_PI;
-    if (theta < -M_PI)
-    theta += 2*M_PI;
-
-    return theta;
-}
 g2o::SE2 Converter::toSE2(const cv::Mat &cvT)
 {
     double yaw = std::atan2(cvT.at<float>(1,0), cvT.at<float>(0,0));
@@ -73,21 +58,7 @@ g2o::SE2 Converter::toSE2(const cv::Mat &cvT)
     g2o::SE2 pose(pose_vec);
     return pose;
 }
-cv::Mat toCvSE3(const Eigen::Vector3d &SE2)
-{
-    double x = SE2[0];
-    double y = SE2[1];
-    double theta = SE2[2];
 
-    double c = cos(theta);
-    double s = sin(theta);
-    
-    return (cv::Mat_<double>(4,4) <<
-            c,-s, 0, x,
-            s, c, 0, y,
-            0, 0, 1, 0,
-            0, 0, 0, 1);
-}
 cv::Mat Converter::toCvMat(const g2o::SE3Quat &SE3)
 {
     Eigen::Matrix<double,4,4> eigMat = SE3.to_homogeneous_matrix();

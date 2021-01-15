@@ -40,6 +40,7 @@
 #include "../core/base_binary_edge.h"
 #include "../core/base_unary_edge.h"
 #include "../core/eigen_types.h"
+#include "../types/g2o_types_sba_api.h"
 #include "se3_ops.h"
 #include "se3quat.h"
 #include "types_sba.h"
@@ -49,7 +50,7 @@ namespace g2o {
 namespace types_six_dof_expmap {
 void init();
 }
-class CameraParameters : public g2o::Parameter
+class G2O_TYPES_SBA_API_H CameraParameters : public g2o::Parameter
 {
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW;

@@ -148,6 +148,7 @@ g2o/types/vertex_se2.cpp
 g2o/types/g2o_types_slam3d_api.h
 g2o/types/isometry3d_mappings.cpp
 g2o/types/isometry3d_mappings.h
+g2o/types/g2o_types_sba_api.h
 #core
 g2o/core/eigen_types.h
 g2o/core/base_edge.h
