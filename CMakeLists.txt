@@ -38,16 +38,38 @@ endif()
 
 find_package(Eigen3 REQUIRED)
 find_package(Pangolin REQUIRED)
-#find_package(Cholmod REQUIRED)
+find_package(Cholmod REQUIRED)
 find_package(CSparse REQUIRED)
+find_package(SuiteSparse REQUIRED)
+find_package(BLAS REQUIRED)
+find_package(LAPACK REQUIRED)
+IF(CHOLMOD_FOUND AND BLAS_FOUND AND LAPACK_FOUND)
+  MESSAGE(STATUS "Found CHOLMOD and its dependencies")
+  SET(CHOLMOD_FOUND TRUE)
+ELSE()
+MESSAGE(STATUS " Not found CHOLMOD and its dependencies")
+  SET(CHOLMOD_FOUND FALSE)
+ENDIF()
+
+IF(CSPARSE_FOUND)
+  MESSAGE(STATUS "Found CSparse")
+  SET(BUILD_CSPARSE OFF CACHE BOOL "Build local CSparse library")
+ELSE(CSPARSE_FOUND)
+  SET(BUILD_CSPARSE ON CACHE BOOL "Build local CSparse library")
+  IF(BUILD_CSPARSE)
+    SET(CSPARSE_FOUND TRUE)
+  ENDIF()
+ENDIF(CSPARSE_FOUND)
+
 message(STATUS "Found Eigen3 version: ${EIGEN3_VERSION} in ${EIGEN3_INCLUDE_DIR}")
 
 include_directories(
 ${PROJECT_SOURCE_DIR}
 ${PROJECT_SOURCE_DIR}/include
 ${EIGEN3_INCLUDE_DIR}
-#${Cholmod_INCLUDE_DIR}
+${Cholmod_INCLUDE_DIRS}
 ${CSPARSE_INCLUDE_DIR}
+${SUITESPARSE_INCLUDE_DIRS}
 ${Pangolin_INCLUDE_DIRS}
 )
 
@@ -80,7 +102,8 @@ target_link_libraries(${PROJECT_NAME}
 ${OpenCV_LIBS}
 ${EIGEN3_LIBS}
 ${Pangolin_LIBRARIES}
-#${Cholmod_LIBRARIES}
+${CHOLMOD_LIBRARIES}
+${SUITESPARSE_INCLUDE_DIRS}
 ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
 ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
 )

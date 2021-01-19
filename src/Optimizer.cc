@@ -23,7 +23,7 @@
 #include "Thirdparty/g2o/g2o/core/block_solver.h"
 #include "Thirdparty/g2o/g2o/core/optimization_algorithm_levenberg.h"
 #include "Thirdparty/g2o/g2o/solvers/linear_solver_eigen.h"
-//#include "Thirdparty/g2o/g2o/solvers/cholmod/linear_solver_cholmod.h"
+#include "Thirdparty/g2o/g2o/solvers/cholmod/linear_solver_cholmod.h"
 #include "Thirdparty/g2o/g2o/core/robust_kernel_impl.h"
 #include "Thirdparty/g2o/g2o/solvers/linear_solver_dense.h"
 #include "Thirdparty/g2o/g2o/types/types_seven_dof_expmap.h"
@@ -60,11 +60,11 @@ void Optimizer::BundleAdjustmentSE2(const vector<KeyFrame *> &vpKFs, const vecto
     vbNotIncludedMP.resize(vpMP.size());
 
     g2o::SparseOptimizer optimizer;
-    g2o::BlockSolver_6_3::LinearSolverType * linearSolver;
+    g2o::BlockSolverX::LinearSolverType * linearSolver;
 
-    linearSolver = new g2o::LinearSolverEigen<g2o::BlockSolver_6_3::PoseMatrixType>();
+    linearSolver = new g2o::LinearSolverCholmod<g2o::BlockSolverX::PoseMatrixType>();
 
-    g2o::BlockSolver_6_3 * solver_ptr = new g2o::BlockSolver_6_3(linearSolver);
+    g2o::BlockSolverX * solver_ptr = new g2o::BlockSolverX(linearSolver);
 
     g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
     optimizer.setAlgorithm(solver);
@@ -132,6 +132,7 @@ void Optimizer::BundleAdjustmentSE2(const vector<KeyFrame *> &vpKFs, const vecto
             e->setMeasurement(obs);
             const float &invSigma2 = pKF->mvInvLevelSigma2[kpUn.octave];
             e->setInformation(Eigen::Matrix2d::Identity()*invSigma2);
+
             if(bRobust)
             {
                 g2o::RobustKernel* rk = new g2o::RobustKernelHuber;
@@ -161,6 +162,7 @@ void Optimizer::BundleAdjustmentSE2(const vector<KeyFrame *> &vpKFs, const vecto
         optimizer.initializeOptimization();
         optimizer.optimize(nIterations);
 
+        std::cout << "I'm here"<< endl;
         //Recover optimized data
         //KeyFrame
         for (size_t i = 0; i < vpKFs.size(); i++)
@@ -259,7 +261,7 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
         vPoint->setMarginalized(true);
         optimizer.addVertex(vPoint);
 
-       const map<KeyFrame*,size_t> observations = pMP->GetObservations();
+        const map<KeyFrame*,size_t> observations = pMP->GetObservations();
 
         int nEdges = 0;
         //SET EDGES
