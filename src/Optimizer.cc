@@ -89,7 +89,7 @@ void Optimizer::BundleAdjustmentSE2(const vector<KeyFrame *> &vpKFs, const vecto
             maxKFid=pKF->mnId;
     }
 
-    const float thHuber2D = sqrt(5.99);     
+    const float thHuber2D = sqrt(5.991);     
 
     // Set MapPoint vertices
     for(size_t i = 0; i < vpMP.size(); i++)
@@ -410,11 +410,11 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
 int Optimizer::PoseOptimizationSE2(Frame *pFrame)
 {
     g2o::SparseOptimizer optimizer;
-    g2o::BlockSolver_6_3::LinearSolverType * linearSolver;
+    g2o::BlockSolverX::LinearSolverType * linearSolver;
 
-    linearSolver = new g2o::LinearSolverDense<g2o::BlockSolver_6_3::PoseMatrixType>();
+    linearSolver = new g2o::LinearSolverCholmod<g2o::BlockSolverX::PoseMatrixType>();
 
-    g2o::BlockSolver_6_3 * solver_ptr = new g2o::BlockSolver_6_3(linearSolver);
+    g2o::BlockSolverX * solver_ptr = new g2o::BlockSolverX(linearSolver);
 
     g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
     optimizer.setAlgorithm(solver);
@@ -458,7 +458,7 @@ int Optimizer::PoseOptimizationSE2(Frame *pFrame)
             const cv::KeyPoint &kpUn = pFrame->mvKeysUn[i];
             // Corresponding stereo coordinate for each keypoint.
             const float &kp_unr = pFrame->mvuRight[i];
-            obs << kpUn.pt.x, kpUn.pt.y, kp_unr;
+            obs << kpUn.pt.x, kpUn.pt.y;
 
             g2o::EdgeSE2XYZOnlyPose* e = new g2o::EdgeSE2XYZOnlyPose();
 
@@ -810,11 +810,11 @@ void Optimizer::LocalBundleAdjustmentSE2(KeyFrame *pKF, bool* pbStopFlag, Map* p
     }
 
     g2o::SparseOptimizer optimizer;
-    g2o::BlockSolver_6_3::LinearSolverType * linearSolver;
+    g2o::BlockSolverX::LinearSolverType * linearSolver;
 
-    linearSolver = new g2o::LinearSolverEigen<g2o::BlockSolver_6_3::PoseMatrixType>();
+    linearSolver = new g2o::LinearSolverCholmod<g2o::BlockSolverX::PoseMatrixType>();
 
-    g2o::BlockSolver_6_3 * solver_ptr = new g2o::BlockSolver_6_3(linearSolver);
+    g2o::BlockSolverX * solver_ptr = new g2o::BlockSolverX(linearSolver);
 
     g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
     optimizer.setAlgorithm(solver);

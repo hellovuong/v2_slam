@@ -56,16 +56,17 @@ public:
 
     virtual void linearizeOplus();
 
-    inline void setCameraParameter(g2o::CameraParameters* _cam){cam = _cam;} // deprecated in ORB_SLAM2 framework
+    // inline void setCameraParameter(g2o::CameraParameters* _cam){cam = _cam;} // deprecated in ORB_SLAM2 framework
 
-    inline void setExtParameter(const g2o::SE3Quat& _Tbc) { Tbc = _Tbc; Tcb = Tbc.inverse(); } // deprecated in ORB_SLAM2 framework
-    
+    //inline void setExtParameter(const g2o::SE3Quat& _Tbc) { Tbc = _Tbc; Tcb = Tbc.inverse(); } // deprecated in ORB_SLAM2 framework
+    Vector2d cam_project(const Vector3d & trans_xyz) const;
+
     double fx, fy, cx, cy;
-private:
-    g2o::SE3Quat Tbc; 
-    g2o::SE3Quat Tcb;
+// private:
+//     g2o::SE3Quat Tbc; 
+//     g2o::SE3Quat Tcb;
 
-    g2o::CameraParameters * cam;
+//     g2o::CameraParameters * cam;
 };
 
 class EdgeSE2XYZOnlyPose : public g2o::BaseUnaryEdge<2, Vector2d, g2o::VertexSE2>
