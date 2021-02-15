@@ -19,7 +19,7 @@
 */
 
 // Modified by Vuong (2021)
-// Added PoseEstimationSE2 for Motion-Only BA on SE2 group
+// Added PoseEstimationSE2 for Motion-Only BA on SE2 
 // Added LocalBundleAdjustmentSE2 
 // Added BundleAdjustmentSE2
 
@@ -59,7 +59,7 @@ public:
     void static GlobalBundleAdjustemntSE2(Map* pMap, int nIterations=5, bool *pbStopFlag=NULL,
                                        const unsigned long nLoopKF=0, const bool bRobust = true);
     void static LocalBundleAdjustmentSE2(KeyFrame* pKF, bool *pbStopFlag, Map *pMap);
-    int static PoseOptimizationSE2(Frame* pFrame);
+    int static PoseOptimizationSE2(Frame* pFrame, cv::Mat mIm = cv::Mat());
 
     // if bFixScale is true, 6DoF optimization (stereo,rgbd), 7DoF otherwise (mono)
     void static OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
@@ -71,6 +71,8 @@ public:
     // if bFixScale is true, optimize SE3 (stereo,rgbd), Sim3 otherwise (mono)
     static int OptimizeSim3(KeyFrame* pKF1, KeyFrame* pKF2, std::vector<MapPoint *> &vpMatches1,
                             g2o::Sim3 &g2oS12, const float th2, const bool bFixScale);
+
+    //TODO: Move this Homography to better place
 };
 
 } //namespace ORB_SLAM

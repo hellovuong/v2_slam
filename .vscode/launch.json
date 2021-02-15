@@ -9,8 +9,8 @@
             "program": "${command:cmake.launchTargetPath}",
             "args": [
                     "./Vocabulary/ORBvoc.txt", 
-                    "./Examples/Monocular/KITTI04-12.yaml", 
-                    "/home/vuong/Code/Datasets/04"
+                    "./Examples/Monocular/OpenLoris.yaml", 
+                    "/home/vuong/Code/Datasets/OpenLoris/office1-1"
                     ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

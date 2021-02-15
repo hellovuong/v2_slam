@@ -54,7 +54,18 @@ public:
 
         return theta;
     }
-
+    static inline Eigen::Matrix3d skew(const Eigen::Vector3d&v)
+    {
+        Eigen::Matrix3d m;
+        m.fill(0.);
+        m(0,1)  = -v(2);
+        m(0,2)  =  v(1);
+        m(1,2)  = -v(0);
+        m(1,0)  =  v(2);
+        m(2,0) = -v(1);
+        m(2,1) = v(0);
+        return m;
+    }
     static g2o::SE2 toSE2(const cv::Mat &cvT);
     static cv::Mat toCvSE3(const Eigen::Vector3d &SE2)
     {
@@ -87,6 +98,18 @@ public:
 
     static std::vector<float> toQuaternion(const cv::Mat &M);
 };
+
+namespace Constants
+{
+    const cv::Mat bTc = (cv::Mat_<float>(4,4) <<
+                9.9792816252667338e-03f, 6.5348103708624539e-03f,9.9992885256485176e-01f, 2.2648368490900000e-01f,
+                -9.9982014658446139e-01f, 1.6192923276330706e-02f,9.8723715283343672e-03f, -5.1141940356500000e-02f,
+                -1.6127257115523985e-02f, -9.9984753112121250e-01f,6.6952288046080444e-03f, 9.1600000000000004e-01f, 
+                0.0f, 0.0f, 0.0f,1.0f);
+}
+
+    
+
 
 }// namespace ORB_SLAM
 

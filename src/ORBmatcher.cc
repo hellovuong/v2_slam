@@ -406,7 +406,7 @@ int ORBmatcher::SearchForInitialization(Frame &F1, Frame &F2, vector<cv::Point2f
 {
     int nmatches=0;
     vnMatches12 = vector<int>(F1.mvKeysUn.size(),-1);
-
+    
     vector<int> rotHist[HISTO_LENGTH];
     for(int i=0;i<HISTO_LENGTH;i++)
         rotHist[i].reserve(500);

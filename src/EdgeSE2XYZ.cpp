@@ -88,24 +88,23 @@ void EdgeSE2XYZ::computeError()
     VertexSE2* v1 = static_cast<VertexSE2*>(_vertices[1]);
     VertexSBAPointXYZ* v2 = static_cast<VertexSBAPointXYZ*>(_vertices[0]);
 
-    SE3Quat Tbw = SE2ToSE3(v1->estimate());
+    SE3Quat Tbw = SE2ToSE3(v1->estimate().inverse());
+    SE3Quat Tcw = Tcb * Tbw;
 
-    // SE3Quat Tcw = Tcb * Tbw;
+    Vector3d lc = Tcw.map(v2->estimate());
 
-    // Vector3d lc = Tcw.map(v2->estimate());
-
-    // _error = cam->cam_map(lc) -  Vector2d(_measurement);
     Vector2d obs(_measurement);
-    _error = obs-cam_project(Tbw.map(v2->estimate()));
+    _error = cam_project(lc) - obs;
     
 }
 
-// bool EdgeSE2XYZ::isDepthPositive(){
-//     VertexSE2* v1 = static_cast<VertexSE2*>(_vertices[0]);
-//     VertexSBAPointXYZ* v2 = static_cast<VertexSBAPointXYZ*>(_vertices[1]);
+bool EdgeSE2XYZ::isDepthPositive(){
+    
+    const VertexSE2* v1 = static_cast<VertexSE2*>(_vertices[1]);
+    const VertexSBAPointXYZ* v2 = static_cast<VertexSBAPointXYZ*>(_vertices[0]);
 
-
-// }
+    return (SE2ToSE3(v1->estimate()).map(v2->estimate()))(2) > 0.0;
+}
 
 void EdgeSE2XYZ::linearizeOplus()
 {
@@ -114,11 +113,18 @@ void EdgeSE2XYZ::linearizeOplus()
 
     Vector3d vwb = vj->estimate().toVector();
 
-    //SE3Quat Tcw = Tcb * SE2ToSE3(v1->estimate().inverse());
-    SE3Quat Tcw(SE2ToSE3(vj->estimate()));
+    SE3Quat Tcw = Tcb * SE2ToSE3(vj->estimate().inverse());
+    //SE3Quat Tcw(SE2ToSE3(vi->estimate()));
+    
     Matrix3d Rcw = Tcw.rotation().toRotationMatrix();
+    Vector3d tcw = Tcw.translation();
+
+    SE3Quat Twc(Tcw.inverse());
+    Matrix3d Rwc = Twc.rotation().toRotationMatrix();
+    Vector3d twc = Twc.translation();
 
     Vector3d pi(vwb[0], vwb[1], 0);
+    //Vector3d pi(twc(0), twc(1), 0);
 
     Vector3d lw = vi->estimate();
     Vector3d lc = Tcw.map(lw);
@@ -170,8 +176,14 @@ Vector2d EdgeSE2XYZOnlyPose::cam_project(const Vector3d & trans_xyz) const{
 
 void EdgeSE2XYZOnlyPose::computeError(){
     const VertexSE2* v1 = static_cast<const VertexSE2*>(_vertices[0]);
+    
+    SE3Quat Tbw = SE2ToSE3(v1->estimate().inverse());
+    SE3Quat Tcw = Tcb * Tbw;
+
     Vector2d obs(_measurement);
-    _error = obs - cam_project(SE2ToSE3(v1->estimate().inverse()).map(Xw));
+    Vector3d lc = Tcw.map(Xw);
+    _error = cam_project(lc) - obs;
+    //_error = obs - cam_project(lc);
 }
 
 bool EdgeSE2XYZOnlyPose::isDepthPositive(){
@@ -181,15 +193,23 @@ bool EdgeSE2XYZOnlyPose::isDepthPositive(){
 
 void EdgeSE2XYZOnlyPose::linearizeOplus(){
     VertexSE2* vi = static_cast<VertexSE2 *>(_vertices[0]);
+    
     Vector3d vwb = vi->estimate().toVector();
 
-    //SE3Quat Tcw = Tcb * SE2ToSE3(v1->estimate().inverse());
-    SE3Quat Tcw(SE2ToSE3(vi->estimate()));
+    SE3Quat Tcw = Tcb * SE2ToSE3(vi->estimate().inverse());
+    //SE3Quat Tcw(SE2ToSE3(vi->estimate()));
+    
     Matrix3d Rcw = Tcw.rotation().toRotationMatrix();
+    Vector3d tcw = Tcw.translation();
+
+    SE3Quat Twc(Tcw.inverse());
+    Matrix3d Rwc = Twc.rotation().toRotationMatrix();
+    Vector3d twc = Twc.translation();
 
     Vector3d pi(vwb[0], vwb[1], 0);
+    //Vector3d pi(twc(0), twc(1), 0);
 
-    //Vector3d lw = vi->estimate();
+    Vector3d lw = Xw;
     Vector3d lc = Tcw.map(Xw);
     double zc = lc(2);
     double zc_inv = 1. / zc;
@@ -204,7 +224,7 @@ void EdgeSE2XYZOnlyPose::linearizeOplus(){
     Matrix23d J_pi_Rcw = J_pi * Rcw;
 
     _jacobianOplusXi.block<2,2>(0,0) = -J_pi_Rcw.block<2,2>(0,0);
-    _jacobianOplusXi.block<2,1>(0,2) = (J_pi_Rcw * skew(Xw-pi)).block<2,1>(0,2);
+    _jacobianOplusXi.block<2,1>(0,2) = (J_pi_Rcw * skew(lw-pi)).block<2,1>(0,2);
 
 }
 

@@ -49,7 +49,7 @@ g2o::SE3Quat Converter::toSE3Quat(const cv::Mat &cvT)
 
 g2o::SE2 Converter::toSE2(const cv::Mat &cvT)
 {
-    double yaw = std::atan2(cvT.at<float>(1,0), cvT.at<float>(0,0));
+    double yaw = std::atan2(cvT.at<float>(1,0), cvT.at<float>(0,0)); // https://stackoverflow.com/questions/15022630/how-to-calculate-the-angle-from-rotation-matrix
     double theta = Converter::normalize_angle(yaw);
     double x = cvT.at<float>(0,3);
     double y = cvT.at<float>(1,3);

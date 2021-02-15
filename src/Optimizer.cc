@@ -38,7 +38,6 @@
 namespace ORB_SLAM2
 {
 
-
 void Optimizer::GlobalBundleAdjustemnt(Map* pMap, int nIterations, bool* pbStopFlag, const unsigned long nLoopKF, const bool bRobust)
 {
     vector<KeyFrame*> vpKFs = pMap->GetAllKeyFrames();
@@ -81,7 +80,12 @@ void Optimizer::BundleAdjustmentSE2(const vector<KeyFrame *> &vpKFs, const vecto
         if(pKF->isBad())
             continue;
         g2o::VertexSE2 * vSE2 = new g2o::VertexSE2();
-        vSE2->setEstimate(Converter::toSE2(pKF->GetPose()));
+        cv::Mat Tcw = pKF->GetPose(); //Tcw
+        //std::cout << ("Pose KF wrt in cam sys: ") << std::endl << Tcw << std::endl; 
+        cv::Mat Tw0b = Constants::bTc * ((Constants::bTc * Tcw).inv()) ; // Twb = Twc*Tcb    : w is world in Cam system, w0 is world in Body system
+        //std::cout << ("Pose body wrt in world of body sys: ") << std::endl << Tw0b << std::endl;
+        //std::cout << ("Pose body wrt in world of body sys in SE2: ") << std::endl << Converter::toSE2(Tw0b).toVector().transpose() << std::endl;
+        vSE2->setEstimate(Converter::toSE2(Tw0b));
         vSE2->setId(pKF->mnId);
         vSE2->setFixed(pKF->mnId==0);
         optimizer.addVertex(vSE2);
@@ -119,7 +123,7 @@ void Optimizer::BundleAdjustmentSE2(const vector<KeyFrame *> &vpKFs, const vecto
             nEdges++;
 
             const cv::KeyPoint &kpUn = pKF->mvKeysUn[mit->second];
-
+            
             //Mono
             Eigen::Matrix<double,2,1> obs;
 
@@ -127,11 +131,44 @@ void Optimizer::BundleAdjustmentSE2(const vector<KeyFrame *> &vpKFs, const vecto
 
             g2o::EdgeSE2XYZ* e = new g2o::EdgeSE2XYZ();
 
-            e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(id)));
-            e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(pKF->mnId)));
+            e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(id)));        // Map Point - 0
+            e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(pKF->mnId))); // KeyFrame  - 1
             e->setMeasurement(obs);
             const float &invSigma2 = pKF->mvInvLevelSigma2[kpUn.octave];
-            e->setInformation(Eigen::Matrix2d::Identity()*invSigma2);
+            Eigen::Matrix2d Sigma_u = Eigen::Matrix2d::Identity()*invSigma2;
+            cv::Mat Tcw = pKF->GetPose();
+            cv::Mat Tw0b = Constants::bTc * ((Constants::bTc * Tcw).inv()) ; // Twb = Twc*Tcb    : w is world in Cam system, w0 is world in Body system
+            
+            // Compute covariance/info
+            cv::Mat Tcw0 = (Constants::bTc *  Tcw.inv()).inv();
+            Eigen::Matrix3d Rcw0 = Converter::toMatrix3d(Tcw0.rowRange(0,3).colRange(0,3));
+            Eigen::Vector3d tcw0 = Converter::toVector3d(Tcw0.rowRange(0,3).col(3));
+
+            Eigen::Vector3d lw0 = Converter::toVector3d(Constants::bTc.rowRange(0,3).colRange(0,3) * pMP->GetWorldPos() + Constants::bTc.rowRange(0,3).col(3));
+            Eigen::Vector3d lc = Rcw0 * lw0 + tcw0;
+
+            double zc = lc(2);
+            double zc_inv = 1. / zc;
+            double zc_inv_2 = zc_inv * zc_inv;
+            g2o::Matrix23d J_pi;
+            const float fx = pKF->fx;
+            J_pi<< fx * zc_inv, 0, -fx*lc(0)*zc_inv_2,
+                   0, fx * zc_inv, -fx*lc(1)*zc_inv_2;
+            
+            Eigen::Vector3d pi(Tw0b.at<float>(0,3),Tw0b.at<float>(1,3),0);
+            //std::cout<< "pi vector: " << pi << std::endl;
+            g2o::Matrix23d J_pi_Rcw = J_pi * Rcw0;
+
+            Eigen::Matrix2d J_rotxy = (J_pi_Rcw * Converter::skew(lw0-pi)).block<2,2>(0,0);
+            Eigen::Matrix<double,2,1> J_z = -J_pi_Rcw.block<2,1>(0,2);
+            float Sigma_rotxy = 1.; // Plane Motion X_Rot_Info = 1e6
+            float Sigma_z = 1.;       // Plane Motion Z_Info = 1
+
+            Eigen::Matrix2d Sigma_all = Sigma_rotxy * J_rotxy * J_rotxy.transpose() +
+                                        Sigma_z * J_z * J_z.transpose() + Sigma_u;
+            
+            e->setInformation(Sigma_all.inverse());
+            //e->setInformation(Eigen::Matrix2d::Identity()*invSigma2);
 
             if(bRobust)
             {
@@ -162,7 +199,7 @@ void Optimizer::BundleAdjustmentSE2(const vector<KeyFrame *> &vpKFs, const vecto
         optimizer.initializeOptimization();
         optimizer.optimize(nIterations);
 
-        std::cout << "I'm here"<< endl;
+        //std::cout << "I'm here"<< endl;
         //Recover optimized data
         //KeyFrame
         for (size_t i = 0; i < vpKFs.size(); i++)
@@ -172,14 +209,16 @@ void Optimizer::BundleAdjustmentSE2(const vector<KeyFrame *> &vpKFs, const vecto
                 continue;
             g2o::VertexSE2* vSE2 = static_cast<g2o::VertexSE2*>(optimizer.vertex(pKF->mnId));
             Eigen::Vector3d vp = vSE2->estimate().toVector();
+            cv::Mat vw0b = Converter::toCvSE3(vp);
+            cv::Mat pose = (Constants::bTc.inv() * (vw0b * Constants::bTc)).inv(); // Tcw = Tcb * (vw0b * Tbc).inv()
             if (nLoopKF==0)
             {
-                pKF->SetPose(Converter::toCvSE3(vp));
+                pKF->SetPose(pose); 
             }
             else
             {
                 pKF->mTcwGBA.create(4,4,CV_32F);
-                Converter::toCvSE3(vp).copyTo(pKF->mTcwGBA);
+                pose.copyTo(pKF->mTcwGBA);
                 pKF->mnBAGlobalForKF = nLoopKF;
             } 
         }
@@ -407,12 +446,12 @@ void Optimizer::BundleAdjustment(const vector<KeyFrame *> &vpKFs, const vector<M
 //(haven't take into account odemetry and inertial yet) 
 // Init date: 4/1/2020
 
-int Optimizer::PoseOptimizationSE2(Frame *pFrame)
+int Optimizer::PoseOptimizationSE2(Frame *pFrame, cv::Mat mIm)
 {
     g2o::SparseOptimizer optimizer;
     g2o::BlockSolverX::LinearSolverType * linearSolver;
 
-    linearSolver = new g2o::LinearSolverCholmod<g2o::BlockSolverX::PoseMatrixType>();
+    linearSolver = new g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>();
 
     g2o::BlockSolverX * solver_ptr = new g2o::BlockSolverX(linearSolver);
 
@@ -424,7 +463,13 @@ int Optimizer::PoseOptimizationSE2(Frame *pFrame)
     //Set Frame vertex
     g2o::VertexSE2 * vSE2 = new g2o::VertexSE2();
     vSE2->setId(0);
-    vSE2->setEstimate(Converter::toSE2(pFrame->mTcw));
+    //std::cout << "Camera Extrinsic - Tbc =" << std::endl << " "<< Constants::bTc << std::endl << std::endl;
+    //std::cout << "Pose camera w.r.t world in cam sys - Tcw = " << std::endl << " "<< pFrame->mTcw.inv() << std::endl << std::endl; 
+    cv::Mat Tw0b = Constants::bTc * ((Constants::bTc * pFrame->mTcw).inv()) ; // Twb = Twc*Tcb    : w is world in Cam system, w0 is world in Body system
+    //std::cout << "Body wrt world in body  - Tw0b = " << std::endl << " "<< Tw0b << std::endl << std::endl;
+    //g2o::SE2 vertex_se2 = Converter::toSE2(Tw0b);
+    //std::cout << "Body in SE2: " << vertex_se2.toVector().transpose() << std::endl;
+    vSE2->setEstimate(Converter::toSE2(Tw0b));
     vSE2->setFixed(false);
     optimizer.addVertex(vSE2);
 
@@ -456,8 +501,7 @@ int Optimizer::PoseOptimizationSE2(Frame *pFrame)
             // Vector of keypoints (original for visualization) and undistorted (actually used by the system).
             // In the stereo case, mvKeysUn is redundant as images must be rectified.
             const cv::KeyPoint &kpUn = pFrame->mvKeysUn[i];
-            // Corresponding stereo coordinate for each keypoint.
-            const float &kp_unr = pFrame->mvuRight[i];
+            
             obs << kpUn.pt.x, kpUn.pt.y;
 
             g2o::EdgeSE2XYZOnlyPose* e = new g2o::EdgeSE2XYZOnlyPose();
@@ -465,9 +509,39 @@ int Optimizer::PoseOptimizationSE2(Frame *pFrame)
             e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(0)));
             e->setMeasurement(obs);
             const float invSigma2 = pFrame->mvInvLevelSigma2[kpUn.octave];
-            Eigen::Matrix2d Info = Eigen::Matrix2d::Identity()*invSigma2;
-            e->setInformation(Info);
+            
+            Eigen::Matrix2d Sigma_u = Eigen::Matrix2d::Identity()*invSigma2;
+            // Compute covariance/info
+            cv::Mat Tcw0 = (Constants::bTc *  pFrame->mTcw.inv()).inv(); 
 
+            Eigen::Matrix3d Rcw0 = Converter::toMatrix3d(Tcw0.rowRange(0,3).colRange(0,3));
+            Eigen::Vector3d tcw0 = Converter::toVector3d(Tcw0.rowRange(0,3).col(3));
+
+            Eigen::Vector3d lw0 = Converter::toVector3d(Constants::bTc.rowRange(0,3).colRange(0,3) * pMP->GetWorldPos() + Constants::bTc.rowRange(0,3).col(3));
+            Eigen::Vector3d lc = Rcw0 * lw0 + tcw0;
+            
+            double zc = lc(2);
+            double zc_inv = 1. / zc;
+            double zc_inv_2 = zc_inv * zc_inv;
+            g2o::Matrix23d J_pi;
+            const float fx = pFrame->fx;
+            J_pi<< fx * zc_inv, 0, -fx*lc(0)*zc_inv_2,
+                   0, fx * zc_inv, -fx*lc(1)*zc_inv_2;
+            
+            Eigen::Vector3d pi(Tw0b.at<float>(0,3),Tw0b.at<float>(1,3),0);
+            //std::cout<< "pi vector: " << pi << std::endl;
+            g2o::Matrix23d J_pi_Rcw = J_pi * Rcw0;
+
+            Eigen::Matrix2d J_rotxy = (J_pi_Rcw * Converter::skew(lw0-pi)).block<2,2>(0,0);
+
+            Eigen::Matrix<double,2,1> J_z = -J_pi_Rcw.block<2,1>(0,2);
+            float Sigma_rotxy = 1.; // Plane Motion X_Rot_Info = 1e6
+            float Sigma_z = 1.;       // Plane Motion Z_Info = 1
+
+            Eigen::Matrix2d Sigma_all = Sigma_rotxy * J_rotxy * J_rotxy.transpose() +
+                                        Sigma_z * J_z * J_z.transpose() + Sigma_u;
+            e->setInformation(Sigma_all.inverse());
+            //e->setInformation(Eigen::Matrix2d::Identity()*invSigma2);
             g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
             e->setRobustKernel(rk);
             rk->setDelta(deltaMono);
@@ -476,12 +550,13 @@ int Optimizer::PoseOptimizationSE2(Frame *pFrame)
             e->fy = pFrame->fy;
             e->cx = pFrame->cx;
             e->cy = pFrame->cy;
-            //e->bf = pFrame->mbf;
-            cv::Mat Xw = pMP->GetWorldPos();
+
+            cv::Mat Xw = Converter::toCvMat(lw0);
             e->Xw[0] = Xw.at<float>(0);
             e->Xw[1] = Xw.at<float>(1);
             e->Xw[2] = Xw.at<float>(2);
 
+            e->Tcb = Converter::toSE3Quat(Constants::bTc.inv());
             optimizer.addEdge(e);
 
             vpEdgesMono.push_back(e);
@@ -497,15 +572,43 @@ int Optimizer::PoseOptimizationSE2(Frame *pFrame)
     // At the next optimization, outliers are not included, but at the end they can be classified as inliers again.
     const float chi2Mono[4]={5.991,5.991,5.991,5.991};
     const int its[4]={10,10,10,10}; 
-
+    optimizer.setVerbose(false);
+    
+    bool visualize = false;
+    if(!mIm.empty() && visualize) {
+        cv::Mat img = mIm.clone();
+        cv::cvtColor(img,img,cv::COLOR_GRAY2BGR);
+        
+        for(int i=0,it=0;i<N;i++){
+            MapPoint* pMP = pFrame->mvpMapPoints[i];
+            if(pMP){
+               const cv::KeyPoint &kpUn = pFrame->mvKeysUn[i];
+               cv::circle(img,kpUn.pt,3,cv::Scalar(0,255,0),-1);
+               cv::Mat Xw = Converter::toCvMat(vpEdgesMono[it]->Xw);
+               
+               cv::Mat Tcw0 = (Constants::bTc *  pFrame->mTcw.inv()).inv(); 
+               cv::Mat Rcw0 = Tcw0.rowRange(0,3).colRange(0,3);
+               cv::Mat tcw0 = Tcw0.rowRange(0,3).col(3);
+               cv::Mat lc = Rcw0*Xw + tcw0;
+               Eigen::Vector2d pt = vpEdgesMono[it]->cam_project(Converter::toVector3d(lc));
+               cv::Point2d pProj(pt.x(),pt.y());
+               cv::circle(img,pProj,2,cv::Scalar(0,0,255),-1);
+               cv::line(img,pProj,kpUn.pt,cv::Scalar(0,0,255),1);
+               it++;
+            }
+            
+        }
+        cv::imshow("PO",img);
+        cv::waitKey(1);
+    }
     int nBad=0;
     for (size_t it = 0; it < 4; it++)
     {
-        vSE2->setEstimate(Converter::toSE2(pFrame->mTcw));
+        vSE2->setEstimate(Converter::toSE2(Tw0b));
         optimizer.initializeOptimization(0);
         optimizer.optimize(its[it]);
 
-        nBad = 0;
+        nBad = 0;   
         for (size_t i = 0, iend=vpEdgesMono.size(); i < iend; i++)
         {
             g2o::EdgeSE2XYZOnlyPose* e = vpEdgesMono[i];
@@ -541,9 +644,35 @@ int Optimizer::PoseOptimizationSE2(Frame *pFrame)
     // Recover optimized pose and return number of inliners
     g2o::VertexSE2* vSE2_recov = static_cast<g2o::VertexSE2*>(optimizer.vertex(0));
     Eigen::Vector3d vSE2_recov_vec = vSE2_recov->estimate().toVector();
-    cv::Mat pose = Converter::toCvSE3(vSE2_recov_vec);
-    pFrame->SetPose(pose);
-
+    
+    cv::Mat vw0b = Converter::toCvSE3(vSE2_recov_vec); 
+    pFrame->SetPose((Constants::bTc.inv() * (vw0b * Constants::bTc)).inv()); 
+    if(!mIm.empty()&& visualize) {
+            cv::Mat img = mIm.clone();
+            cv::cvtColor(img,img,cv::COLOR_GRAY2BGR);
+            
+            for(int i=0,it=0;i<N;i++){
+                MapPoint* pMP = pFrame->mvpMapPoints[i];
+                if(pMP){
+                const cv::KeyPoint &kpUn = pFrame->mvKeysUn[i];
+                cv::circle(img,kpUn.pt,3,cv::Scalar(0,255,0),-1);
+                cv::Mat Xw = Converter::toCvMat(vpEdgesMono[it]->Xw);
+                
+                cv::Mat Tcw0 = (Constants::bTc *  pFrame->mTcw.inv()).inv(); 
+                cv::Mat Rcw0 = Tcw0.rowRange(0,3).colRange(0,3);
+                cv::Mat tcw0 = Tcw0.rowRange(0,3).col(3);
+                cv::Mat lc = Rcw0*Xw + tcw0;
+                Eigen::Vector2d pt = vpEdgesMono[it]->cam_project(Converter::toVector3d(lc));
+                cv::Point2d pProj(pt.x(),pt.y());
+                cv::circle(img,pProj,2,cv::Scalar(0,0,255),-1);
+                cv::line(img,pProj,kpUn.pt,cv::Scalar(0,0,255),1);
+                it++;
+                }
+                
+            }
+            cv::imshow("PO",img);
+            cv::waitKey(1);
+        }
     return nInitialCorrespondences - nBad;
 } 
 int Optimizer::PoseOptimization(Frame *pFrame)
@@ -762,6 +891,7 @@ void Optimizer::LocalBundleAdjustmentSE2(KeyFrame *pKF, bool* pbStopFlag, Map* p
 {
     //Local KeyFrames: Breath-First Search from Current KeyFrame
     list<KeyFrame*> lLocalKeyFrames;
+
     lLocalKeyFrames.push_back(pKF);
     pKF->mnBALocalForKF = pKF->mnId;
 
@@ -776,6 +906,8 @@ void Optimizer::LocalBundleAdjustmentSE2(KeyFrame *pKF, bool* pbStopFlag, Map* p
 
     // Local MapPoints seen in Local KeyFrames
     list<MapPoint*> lLocalMapPoints;
+    std::map<int,bool> mapPoints;
+
     for(list<KeyFrame*>::iterator lit = lLocalKeyFrames.begin(), lend = lLocalKeyFrames.end(); lit!=lend; lit++)
     {
         vector<MapPoint*> vpMPs = (*lit)->GetMapPointMatches();
@@ -784,8 +916,9 @@ void Optimizer::LocalBundleAdjustmentSE2(KeyFrame *pKF, bool* pbStopFlag, Map* p
             MapPoint* pMP = *vit;
             if(pMP)
                 if(!pMP->isBad())
-                    if(pMP->mnBALocalForKF != pKF->mnId)
+                    if(pMP->mnBALocalForKF != pKF->mnId && mapPoints.count(pMP->mnId)==0)
                     {
+                        mapPoints[pMP->mnId] = true;
                         lLocalMapPoints.push_back(pMP);
                         pMP->mnBAGlobalForKF = pKF->mnId;
                     }
@@ -800,6 +933,7 @@ void Optimizer::LocalBundleAdjustmentSE2(KeyFrame *pKF, bool* pbStopFlag, Map* p
         for (map<KeyFrame*, size_t>::iterator mit = observations.begin(), mend = observations.end(); mit != mend; mit++)
         {
             KeyFrame* pKFi = mit->first;
+
             if(pKFi->mnBALocalForKF != pKF->mnId && pKFi->mnBAFixedForKF != pKF->mnId)
             {
                 pKFi->mnBAFixedForKF = pKF->mnId;
@@ -808,11 +942,11 @@ void Optimizer::LocalBundleAdjustmentSE2(KeyFrame *pKF, bool* pbStopFlag, Map* p
             }
         }
     }
-
+    // Setup Optimizer 
     g2o::SparseOptimizer optimizer;
     g2o::BlockSolverX::LinearSolverType * linearSolver;
 
-    linearSolver = new g2o::LinearSolverCholmod<g2o::BlockSolverX::PoseMatrixType>();
+    linearSolver = new g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>();
 
     g2o::BlockSolverX * solver_ptr = new g2o::BlockSolverX(linearSolver);
 
@@ -829,9 +963,12 @@ void Optimizer::LocalBundleAdjustmentSE2(KeyFrame *pKF, bool* pbStopFlag, Map* p
     {
         KeyFrame* pKFi = *lit;
         g2o::VertexSE2 * vSE2 = new g2o::VertexSE2();
-        vSE2->setEstimate(Converter::toSE2(pKFi->GetPose()));
+        cv::Mat Tcw = pKFi->GetPose();
+        cv::Mat Tw0b = Constants::bTc * ((Constants::bTc * Tcw).inv());
+
+        vSE2->setEstimate(Converter::toSE2(Tw0b));
         vSE2->setId(pKFi->mnId);
-        vSE2->setFixed(pKFi->mnId = true);
+        vSE2->setFixed(pKFi->mnId==0);
         optimizer.addVertex(vSE2);
         if (pKFi->mnId > maxKFid)
         {
@@ -844,7 +981,10 @@ void Optimizer::LocalBundleAdjustmentSE2(KeyFrame *pKF, bool* pbStopFlag, Map* p
     {
         KeyFrame* pKFi = * lit;
         g2o::VertexSE2 * vSE2 = new g2o::VertexSE2();
-        vSE2->setEstimate(Converter::toSE2(pKFi->GetPose()));
+        cv::Mat Tcw = pKFi->GetPose();
+        cv::Mat Tw0b = Constants::bTc * ((Constants::bTc * Tcw).inv());
+
+        vSE2->setEstimate(Converter::toSE2(Tw0b));
         vSE2->setId(pKFi->mnId);
         vSE2->setFixed(true);
         optimizer.addVertex(vSE2);
@@ -868,12 +1008,14 @@ void Optimizer::LocalBundleAdjustmentSE2(KeyFrame *pKF, bool* pbStopFlag, Map* p
 
     const float thHuberMono = sqrt(5.991);
 
-    for (list<MapPoint*>::iterator lit = lLocalMapPoints.begin(), lend = lLocalMapPoints.end(); lit != lend; lit++)    {
-        
+    for (list<MapPoint*>::iterator lit = lLocalMapPoints.begin(), lend = lLocalMapPoints.end(); lit != lend; lit++)    
+    {
         MapPoint* pMP = *lit;
         g2o::VertexSBAPointXYZ* vPoint = new g2o::VertexSBAPointXYZ();
         vPoint->setEstimate(Converter::toVector3d(pMP->GetWorldPos()));
         int id = pMP->mnId + maxKFid + 1;
+        //std::cout<<"Points in BA"<<std::endl;
+        //std::cout<<id<<' ' <<pMP->mnId <<' '<<maxKFid<<std::endl;
         vPoint->setId(id);
         vPoint->setMarginalized(true);
         optimizer.addVertex(vPoint);
@@ -899,9 +1041,40 @@ void Optimizer::LocalBundleAdjustmentSE2(KeyFrame *pKF, bool* pbStopFlag, Map* p
                 e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(pKFi->mnId)));
                 e->setMeasurement(obs);
                 const float &invSigma2 = pKFi->mvInvLevelSigma2[kpUn.octave];
-                Eigen::Matrix2d Info = Eigen::Matrix2d::Identity()*invSigma2;
-                e->setInformation(Info);
+                Eigen::Matrix2d Sigma_u = Eigen::Matrix2d::Identity()*invSigma2;
+                cv::Mat Tcw = pKFi->GetPose();
+                cv::Mat Tw0b = Constants::bTc * ((Constants::bTc * Tcw).inv()) ; // Twb = Twc*Tcb    : w is world in Cam system, w0 is world in Body system
+                
+                // Compute covariance/info
+                cv::Mat Tcw0 = (Constants::bTc *  Tcw.inv()).inv();
+                Eigen::Matrix3d Rcw0 = Converter::toMatrix3d(Tcw0.rowRange(0,3).colRange(0,3));
+                Eigen::Vector3d tcw0 = Converter::toVector3d(Tcw0.rowRange(0,3).col(3));
 
+                Eigen::Vector3d lw0 = Converter::toVector3d(Constants::bTc.rowRange(0,3).colRange(0,3) * pMP->GetWorldPos() + Constants::bTc.rowRange(0,3).col(3));
+                Eigen::Vector3d lc = Rcw0 * lw0 + tcw0;
+
+                double zc = lc(2);
+                double zc_inv = 1. / zc;
+                double zc_inv_2 = zc_inv * zc_inv;
+                g2o::Matrix23d J_pi;
+                const float fx = pKFi->fx;
+                J_pi<< fx * zc_inv, 0, -fx*lc(0)*zc_inv_2,
+                    0, fx * zc_inv, -fx*lc(1)*zc_inv_2;
+                
+                Eigen::Vector3d pi(Tw0b.at<float>(0,3),Tw0b.at<float>(1,3),0);
+                //std::cout<< "pi vector: " << pi << std::endl;
+                g2o::Matrix23d J_pi_Rcw = J_pi * Rcw0;
+
+                Eigen::Matrix2d J_rotxy = (J_pi_Rcw * Converter::skew(lw0-pi)).block<2,2>(0,0);
+                Eigen::Matrix<double,2,1> J_z = -J_pi_Rcw.block<2,1>(0,2);
+                float Sigma_rotxy = 1.; // Plane Motion X_Rot_Info = 1e6
+                float Sigma_z = 1.;       // Plane Motion Z_Info = 1
+
+                Eigen::Matrix2d Sigma_all = Sigma_rotxy * J_rotxy * J_rotxy.transpose() +
+                                            Sigma_z * J_z * J_z.transpose() + Sigma_u;
+                
+                e->setInformation(Sigma_all.inverse());
+                //e->setInformation(Eigen::Matrix2d::Identity()/**invSigma2*/);
                 g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
                 e->setRobustKernel(rk);
                 rk->setDelta(thHuberMono);
@@ -940,8 +1113,9 @@ void Optimizer::LocalBundleAdjustmentSE2(KeyFrame *pKF, bool* pbStopFlag, Map* p
             if(pMP->isBad())
                 continue;
             
-            if(e->chi2()>5.991)
+            if(e->chi2()>5.991 || !e->isDepthPositive())
                 e->setLevel(1);
+            
             e->setRobustKernel(0);
         }
 
@@ -961,7 +1135,8 @@ void Optimizer::LocalBundleAdjustmentSE2(KeyFrame *pKF, bool* pbStopFlag, Map* p
 
             if(pMP->isBad())
                 continue;
-            if(e->chi2()>5.991)
+
+            if(e->chi2()>5.991 || !e->isDepthPositive())
             {
                 KeyFrame* pKFi = vpEdgeKFMono[i];
                 vToErase.push_back(make_pair(pKFi,pMP));
@@ -990,7 +1165,9 @@ void Optimizer::LocalBundleAdjustmentSE2(KeyFrame *pKF, bool* pbStopFlag, Map* p
             KeyFrame* pKF = *lit;
             g2o::VertexSE2* vSE2 = static_cast<g2o::VertexSE2*>(optimizer.vertex(pKF->mnId));
             Eigen::Vector3d vp = vSE2->estimate().toVector();
-            pKF->SetPose(Converter::toCvSE3(vp));
+            cv::Mat vw0b = Converter::toCvSE3(vp);
+            cv::Mat pose = (Constants::bTc.inv() * (vw0b * Constants::bTc)).inv(); // Tcw = Tcb * (vw0b * Tbc).inv()
+            pKF->SetPose(pose);
         }
 
         //Points

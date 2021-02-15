@@ -266,6 +266,35 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp)
 
 void Tracking::Track()
 {
+
+    // std::ifstream inGT("/home/vuong/Code/Our_SLAM/groundtruth.txt");
+    // std::ofstream outGT("/home/vuong/Code/Our_SLAM/groundtruthInIdentity.txt");
+
+    // Eigen::Matrix4d Twb0 = Eigen::Matrix4d::Identity();
+    // Eigen::Matrix4d Twbi = Eigen::Matrix4d::Identity();
+    // double ts;
+    // bool done = false;
+    // Eigen::Vector3d t;
+    // Eigen::Quaterniond Q;
+    // while(inGT>>ts){
+    //     std::cout<<ts<<std::endl;
+    //     outGT<<std::fixed<<std::setprecision(6)<<ts<<' ';
+    //     for(int i=0;i<3;i++)
+    //         inGT >> t(i);
+    //     inGT  >>Q.x()>>Q.y()>>Q.z()>> Q.w();
+    //     Eigen::Matrix3d Rwb = Q.toRotationMatrix();
+    //     Twbi.block<3,3>(0,0) = Rwb;
+    //     Twbi.block<3,1>(0,3) = t;
+    //     if(!done){
+    //         done = true;
+    //         Twb0 = Twbi;
+    //     }
+    //     Twbi =  Twb0.inverse() * Twbi ;
+    //     outGT<<Twbi(0,3)<<' '<<Twbi(1,3)<<' '<<Twbi(2,3)<<' ';
+    //     Eigen::Quaterniond QQ (Twbi.block<3,3>(0,0));
+    //     outGT <<QQ.x()<<' ' <<QQ.y()<<' '<<QQ.z()<<' '<<QQ.w()<<std::endl;
+    // }
+
     if(mState==NO_IMAGES_YET)
     {
         mState = NOT_INITIALIZED;
@@ -598,7 +627,7 @@ void Tracking::MonocularInitialization()
         // Find correspondences
         ORBmatcher matcher(0.9,true);
         int nmatches = matcher.SearchForInitialization(mInitialFrame,mCurrentFrame,mvbPrevMatched,mvIniMatches,100);
-
+        //cout<< "Num of matches: "<< nmatches << endl;
         // Check if there are enough correspondences
         if(nmatches<100)
         {
@@ -684,7 +713,7 @@ void Tracking::CreateInitialMapMonocular()
     cout << "New Map created with " << mpMap->MapPointsInMap() << " points" << endl;
     
     //Optimizer::GlobalBundleAdjustemnt(mpMap,20);
-    Optimizer::GlobalBundleAdjustemntSE2(mpMap,20);
+    Optimizer::GlobalBundleAdjustemnt(mpMap,20);
 
     // Set median depth to 1
     float medianDepth = pKFini->ComputeSceneMedianDepth(2);
@@ -776,8 +805,8 @@ bool Tracking::TrackReferenceKeyFrame()
     cout << "Ready to run Pose Optimization" << endl;
     //v = Optimizer::PoseOptimization(&mCurrentFrame);
 
-    v = Optimizer::PoseOptimizationSE2(&mCurrentFrame);
-    cout << v << endl;
+    v = Optimizer::PoseOptimizationSE2(&mCurrentFrame, mImGray);
+    cout << "Number of inliers: " << v << endl;
     // Discard outliers
     int nmatchesMap = 0;
     for(int i =0; i<mCurrentFrame.N; i++)
@@ -899,8 +928,8 @@ bool Tracking::TrackWithMotionModel()
         return false;
 
     // Optimize frame pose with all matches
-    Optimizer::PoseOptimization(&mCurrentFrame);
-    //Optimizer::PoseOptimizationSE2(&mCurrentFrame);
+    //Optimizer::PoseOptimization(&mCurrentFrame);
+    Optimizer::PoseOptimizationSE2(&mCurrentFrame, mImGray);
     // Discard outliers
     int nmatchesMap = 0;
     for(int i =0; i<mCurrentFrame.N; i++)
@@ -941,8 +970,8 @@ bool Tracking::TrackLocalMap()
     SearchLocalPoints();
 
     // Optimize Pose
-    Optimizer::PoseOptimization(&mCurrentFrame);
-    //Optimizer::PoseOptimizationSE2(&mCurrentFrame);
+    //Optimizer::PoseOptimization(&mCurrentFrame);
+    Optimizer::PoseOptimizationSE2(&mCurrentFrame, mImGray);
     mnMatchesInliers = 0;
 
     // Update MapPoints Statistics
@@ -1442,8 +1471,8 @@ bool Tracking::Relocalization()
                         mCurrentFrame.mvpMapPoints[j]=NULL;
                 }
 
-                int nGood = Optimizer::PoseOptimization(&mCurrentFrame);
-                //int nGood = Optimizer::PoseOptimizationSE2(&mCurrentFrame);
+                //int nGood = Optimizer::PoseOptimization(&mCurrentFrame);
+                int nGood = Optimizer::PoseOptimizationSE2(&mCurrentFrame, mImGray);
                 if(nGood<10)
                     continue;
 
@@ -1458,8 +1487,8 @@ bool Tracking::Relocalization()
 
                     if(nadditional+nGood>=50)
                     {
-                        nGood = Optimizer::PoseOptimization(&mCurrentFrame);
-                        //nGood = Optimizer::PoseOptimizationSE2(&mCurrentFrame);
+                        //nGood = Optimizer::PoseOptimization(&mCurrentFrame);
+                        nGood = Optimizer::PoseOptimizationSE2(&mCurrentFrame, mImGray);
                         // If many inliers but still not enough, search by projection again in a narrower window
                         // the camera has been already optimized with many points
                         if(nGood>30 && nGood<50)
@@ -1473,8 +1502,8 @@ bool Tracking::Relocalization()
                             // Final optimization
                             if(nGood+nadditional>=50)
                             {
-                                nGood = Optimizer::PoseOptimization(&mCurrentFrame);
-                                //nGood = Optimizer::PoseOptimizationSE2(&mCurrentFrame);
+                                //nGood = Optimizer::PoseOptimization(&mCurrentFrame);
+                                nGood = Optimizer::PoseOptimizationSE2(&mCurrentFrame, mImGray);
                                 for(int io =0; io<mCurrentFrame.N; io++)
                                     if(mCurrentFrame.mvbOutlier[io])
                                         mCurrentFrame.mvpMapPoints[io]=NULL;

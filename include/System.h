@@ -111,6 +111,12 @@ public:
     // Call first Shutdown()
     // See format details at: http://www.cvlibs.net/datasets/kitti/eval_odometry.php
     void SaveTrajectoryKITTI(const string &filename);
+    
+    // Save camera trajectory in the OpenLoris dataset format.
+    // This method works for all sensor input.
+    // Call first Shutdown()
+    // See format details at: https://lifelong-robotic-vision.github.io/dataset/scene
+    void SaveKeyFrameTrajectoryOpenLoris(const string &filename);
 
     // TODO: Save/Load functions
     // SaveMap(const string &filename);

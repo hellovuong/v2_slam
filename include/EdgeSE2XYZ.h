@@ -62,6 +62,7 @@ public:
     Vector2d cam_project(const Vector3d & trans_xyz) const;
 
     double fx, fy, cx, cy;
+    g2o::SE3Quat Tcb;
 // private:
 //     g2o::SE3Quat Tbc; 
 //     g2o::SE3Quat Tcb;
@@ -87,6 +88,7 @@ public:
     bool isDepthPositive();
     Vector3d Xw;
     double fx, fy, cx, cy;
+    g2o::SE3Quat Tcb;
 };
 class PreEdgeSE2 : public g2o::BaseBinaryEdge<3, Vector3D, VertexSE2, VertexSE2>
 {
