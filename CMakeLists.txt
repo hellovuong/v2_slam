@@ -144,3 +144,7 @@ target_link_libraries(mono_euroc ${PROJECT_NAME})
 add_executable(mono_openloris
 Examples/Monocular/mono_openloris.cc)
 target_link_libraries(mono_openloris ${PROJECT_NAME})
+
+add_executable(mono_odom
+Examples/Monocular/mono_odom.cc)
+target_link_libraries(mono_odom ${PROJECT_NAME})
